@@ -72,4 +72,9 @@ class MainActivity : AppCompatActivity(),
             managerCallback.onManagerConnected(LoaderCallbackInterface.SUCCESS)
         }
     }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        cameraView.disableView()
+    }
 }
