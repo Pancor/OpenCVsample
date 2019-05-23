@@ -2,16 +2,14 @@ package pl.pancordev.opencvsample
 
 import android.support.v7.app.AppCompatActivity
 import android.os.Bundle
+import android.util.Log
+import android.widget.SeekBar
 import android.widget.Toast
 import kotlinx.android.synthetic.main.activity_main.*
-import org.opencv.android.BaseLoaderCallback
-import org.opencv.android.CameraBridgeViewBase
-import org.opencv.core.Mat
-import org.opencv.android.LoaderCallbackInterface
-import org.opencv.android.OpenCVLoader
-import org.opencv.core.Core
-import org.opencv.core.CvType
+import org.opencv.android.*
+import org.opencv.core.*
 import org.opencv.imgproc.Imgproc
+import java.util.*
 
 
 class MainActivity : AppCompatActivity(),
@@ -21,12 +19,15 @@ class MainActivity : AppCompatActivity(),
     private lateinit var rgbaF: Mat
     private lateinit var rgbaT: Mat
 
+    var points : Deque<Point> = ArrayDeque(50)
+    var lastX = -1.0
+    var lastY = -1.0
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
         cameraView.setCvCameraViewListener(this)
-
         managerCallback = object : BaseLoaderCallback(this) {
             override fun onManagerConnected(status: Int) {
                 when (status) {
@@ -52,11 +53,71 @@ class MainActivity : AppCompatActivity(),
     }
 
     override fun onCameraFrame(inputFrame: CameraBridgeViewBase.CvCameraViewFrame): Mat {
+        val rotatedFrame = rotateCamera(inputFrame)
+        val hsv = convertToHSVList(rotatedFrame)
+
+        val min = Scalar(100.0, 150.0, 0.0)
+        val max = Scalar(140.0, 255.0, 255.0)
+
+        Core.inRange(hsv, min, max, hsv)
+
+        Imgproc.blur(hsv, hsv, Size(3.0, 3.0))
+        Imgproc.erode(hsv, hsv, Imgproc.getStructuringElement(Imgproc.MORPH_ELLIPSE, Size(5.0, 5.0)))
+        Imgproc.dilate(hsv, hsv, Imgproc.getStructuringElement(Imgproc.MORPH_ELLIPSE, Size(5.0, 5.0)))
+
+        val moments = Imgproc.moments(hsv)
+        val m01 = moments.m01
+        val m10 = moments.m10
+        val area = moments.m00
+
+        if (area > 20000) {
+            val x = m10 / area
+            val y = m01 / area
+            val r = Math.sqrt(area/Math.PI) / 11
+
+            Imgproc.circle(
+                rotatedFrame, Point(x, y), r.toInt(),
+                Scalar(0.0, 255.0, 255.0), 2
+            )
+
+            if (points.size > 2) {
+
+                for ((index, point) in points.withIndex()) {
+                    if (index > 1) {
+                        val thickness = (Math.sqrt((50/(index + 1).toDouble())) * 2.5).toInt()
+                        Imgproc.line(
+                            rotatedFrame, points.elementAt(index - 1),
+                            point, Scalar(0.0, 0.0, 255.0), thickness
+                        )
+                    }
+                }
+            }
+
+            points.addFirst(Point(x, y))
+            if (points.size > 50) points.removeLast()
+
+            lastY = y
+            lastX = x
+        }
+
+
+        return rotatedFrame
+    }
+
+    private fun rotateCamera(inputFrame: CameraBridgeViewBase.CvCameraViewFrame): Mat {
         val rgba = inputFrame.rgba()
         Core.transpose(rgba, rgbaT)
         Imgproc.resize(rgbaT, rgbaF, rgbaF.size(), 0.0, 0.0, 0)
         Core.flip(rgbaF, rgba, 1)
         return rgba
+    }
+
+    private fun convertToHSVList(frame: Mat): Mat {
+        val hsv = Mat()
+        Imgproc.cvtColor(frame, hsv, Imgproc.COLOR_RGB2HSV)
+        //val hsvList = mutableListOf<Mat>()
+        //Core.split(hsv, hsvList)
+        return hsv
     }
 
     override fun onPause() {
