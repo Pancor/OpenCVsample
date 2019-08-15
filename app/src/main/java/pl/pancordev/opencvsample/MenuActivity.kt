@@ -20,5 +20,20 @@ class MenuActivity : AppCompatActivity() {
             val intent = Intent(this, LoadImageActivity::class.java)
             startActivity(intent)
         }
+
+        loadVideoBtn.setOnClickListener {
+            val intent = Intent(this, LoadVideoActivity::class.java)
+            startActivity(intent)
+        }
+
+        findBallsBtn.setOnClickListener {
+            val intent = Intent(this, FindBallsActivity::class.java)
+            startActivity(intent)
+        }
+
+        findTableBtn.setOnClickListener {
+            val intent = Intent(this, FindTableActivity::class.java)
+            startActivity(intent)
+        }
     }
 }
