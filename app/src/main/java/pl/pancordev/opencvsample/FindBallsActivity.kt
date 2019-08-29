@@ -1,18 +1,17 @@
 package pl.pancordev.opencvsample
 
-import android.support.v7.app.AppCompatActivity
 import android.os.Bundle
+import android.support.v7.app.AppCompatActivity
 import android.util.Log
 import kotlinx.android.synthetic.main.act_load_video.*
 import org.opencv.android.BaseLoaderCallback
 import org.opencv.android.CameraBridgeViewBase
 import org.opencv.android.LoaderCallbackInterface
 import org.opencv.android.OpenCVLoader
-import org.opencv.core.Mat
-import org.opencv.core.Point
-import org.opencv.core.Scalar
-import org.opencv.core.Size
+import org.opencv.core.*
 import org.opencv.imgproc.Imgproc
+import org.opencv.imgproc.Imgproc.drawContours
+import org.opencv.imgproc.Imgproc.minAreaRect
 
 class FindBallsActivity : AppCompatActivity(), CameraBridgeViewBase.CvCameraViewListener2 {
 
@@ -38,16 +37,47 @@ class FindBallsActivity : AppCompatActivity(), CameraBridgeViewBase.CvCameraView
     override fun onCameraViewStopped() { }
 
     override fun onCameraFrame(inputFrame: CameraBridgeViewBase.CvCameraViewFrame): Mat {
-        val result = inputFrame.rgba()
-        val gray = inputFrame.gray()
+        return table(inputFrame)
+//        return findBalls(inputFrame)
+    }
 
-        //reduce noise
-        Imgproc.blur(gray, gray, Size(9.0, 9.0))
+    private fun findBalls(inputFrame: CameraBridgeViewBase.CvCameraViewFrame): Mat {
+//        val gray = inputFrame.gray()
+//        Imgproc.blur(gray, gray, Size(9.0, 9.0))
+
+        val tableMat = inputFrame.rgba()
+
+        val resized = Mat()
+        Imgproc.resize(tableMat, resized, Size(tableMat.size().width * 0.1, tableMat.size().height * 0.1))
+        val ratio = tableMat.size().width / resized.size().width
+
+        val hsv = Mat()
+        Imgproc.cvtColor(resized, hsv, Imgproc.COLOR_BGR2HSV)
+        val blurred = Mat()
+        Imgproc.GaussianBlur(hsv, blurred, Size(5.0, 5.0), 0.0)
+
+        val circle = Rect(blurred.width() / 2, blurred.height() / 2, blurred.width() / 4,blurred.height() / 4)
+        val roi = Mat(blurred, circle)
+
+        val hist = Mat()
+        Imgproc.calcHist(
+            listOf(roi),
+            MatOfInt(0),
+            Mat(),
+            hist,
+            MatOfInt(180),
+            MatOfFloat(0f, 180f)
+        )
+
+        val minMaxLocResult = Core.minMaxLoc(hist)
+        val hColor = minMaxLocResult.maxLoc.y
+        val thresh = Mat()
+        Core.inRange(blurred, Scalar(hColor - 10, 0.0, 0.0), Scalar(hColor + 10, 255.0, 255.0), thresh)
 
         //find circles
         val circles = Mat()
         Log.e("ERROR", "started")
-        Imgproc.HoughCircles(gray, circles, Imgproc.HOUGH_GRADIENT, 2.0,
+        Imgproc.HoughCircles(thresh, circles, Imgproc.HOUGH_GRADIENT, 2.0,
             10.0, 100.0, 50.0,
             70, 80)
         Log.e("ERROR", "finished")
@@ -57,12 +87,90 @@ class FindBallsActivity : AppCompatActivity(), CameraBridgeViewBase.CvCameraView
         for (x in 0 until size) { //16 because there is only 16 balls
             Log.e("ERROR", "$x")
             val c = circles.get(0, x)
-            val center = Point(Math.round(c[0]).toDouble(), Math.round(c[1]).toDouble())
-            val radius = Math.round(c[2]).toInt()
-            Imgproc.circle(gray, center, radius, Scalar(255.0, 0.0, 255.0),
+            val center = Point(Math.round(c[0]*ratio).toDouble(), Math.round(c[1]*ratio).toDouble())
+            val radius = Math.round(c[2]*ratio).toInt()
+            Imgproc.circle(tableMat, center, radius, Scalar(255.0, 0.0, 255.0),
                 3, 8, 0)
         }
-        return gray
+        return tableMat
+    }
+
+    fun table(inputFrame: CameraBridgeViewBase.CvCameraViewFrame): Mat {
+        val tableMat = inputFrame.rgba()
+
+        val resized = Mat()
+        Imgproc.resize(tableMat, resized, Size(tableMat.size().width * 0.1, tableMat.size().height * 0.1))
+        val ratio = tableMat.size().width / resized.size().width
+
+        val hsv = Mat()
+        Imgproc.cvtColor(resized, hsv, Imgproc.COLOR_BGR2HSV)
+        val blurred = Mat()
+        Imgproc.GaussianBlur(hsv, blurred, Size(5.0, 5.0), 0.0)
+
+        val circle = Rect(blurred.width() / 2, blurred.height() / 2, blurred.width() / 4,blurred.height() / 4)
+        val roi = Mat(blurred, circle)
+
+        val hist = Mat()
+        Imgproc.calcHist(
+            listOf(roi),
+            MatOfInt(0),
+            Mat(),
+            hist,
+            MatOfInt(180),
+            MatOfFloat(0f, 180f)
+        )
+
+        val minMaxLocResult = Core.minMaxLoc(hist)
+        val hColor = minMaxLocResult.maxLoc.y
+        val thresh = Mat()
+        Core.inRange(blurred, Scalar(hColor - 10, 0.0, 0.0), Scalar(hColor + 10, 255.0, 255.0), thresh)
+
+        val cnts: List<MatOfPoint> = mutableListOf()
+        val hierarchy = Mat()
+
+        Imgproc.findContours(
+            thresh,
+            cnts,
+            hierarchy,
+            Imgproc.RETR_EXTERNAL,
+            Imgproc.CHAIN_APPROX_SIMPLE
+        )
+
+        var max = 0.0
+        var maxIndex = 0
+        for (i in cnts.indices) {
+            val area = Imgproc.contourArea(cnts[i])
+            if (area > max){
+                max = area
+                maxIndex = i
+            }
+        }
+
+        if (cnts.isNotEmpty()) {
+            val points = cnts[maxIndex].toArray()
+
+            val epsilon = 0.1 * Imgproc.arcLength(MatOfPoint2f(*points), true)
+            val rectPoints = MatOfPoint2f()
+            Imgproc.approxPolyDP(MatOfPoint2f(*points), rectPoints, epsilon, true)
+
+            val pts = rectPoints.toArray()
+            pts.forEach { point ->
+                run {
+                    point.x *= ratio
+                    point.y *= ratio
+                }
+            }
+
+            val recPoints = MatOfPoint(*pts)
+            Imgproc.drawContours(
+                tableMat, listOf(recPoints), 0, Scalar(
+                    255.0,
+                    0.0, 0.0
+                ), 10
+            )
+            return tableMat
+        }
+        return inputFrame.rgba()
     }
 
     override fun onPause() {
