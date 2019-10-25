@@ -24,7 +24,8 @@ class LoadImageActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.act_load_image)
 
-        threshing(null)
+        //threshing(null)
+        findBalls_BACK_UP(null)
 
         val intent = Intent(Intent.ACTION_GET_CONTENT)
         intent.type = "image/"
@@ -84,11 +85,40 @@ class LoadImageActivity : AppCompatActivity() {
 
         val mask = Mat(thresh.height(), thresh.width(), CV_8U)
         Imgproc.drawContours(mask, listOf(MatOfPoint(*tableCnts)), -1, Scalar(255.0, 255.0, 255.0), Core.FILLED)
-        val bg = Mat(thresh.height(), thresh.width(), CV_8U)
-        bg.setTo(Scalar(255.0, 255.0, 255.0))
-        thresh.copyTo(bg, mask)
+        val croped = Mat(thresh.height(), thresh.width(), CV_8UC3)
+        croped.setTo(Scalar(0.0, 0.0, 0.0))
+        thresh.copyTo(croped, mask)
 
-        setImageResult(bg)
+        val inversed = Mat()
+        Core.bitwise_not(croped, inversed)
+
+        val cnts: List<MatOfPoint> = mutableListOf()
+        val hierarchy = Mat()
+        Imgproc.findContours(inversed, cnts, hierarchy, Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_SIMPLE)
+
+        cnts.forEach { cnt ->
+            val points = cnt.toArray()
+            val epsilon = 0.03 * Imgproc.arcLength(MatOfPoint2f(*points), true)
+            val circlePoints = MatOfPoint2f()
+            Imgproc.approxPolyDP(MatOfPoint2f(*points), circlePoints, epsilon, true)
+
+            val cicPoints = MatOfPoint(*circlePoints.toArray())
+            Imgproc.drawContours(
+                croped, listOf(cicPoints), 0, Scalar(
+                    255.0,
+                    0.0, 0.0
+                ), 15
+            )
+        }
+
+//        val bilateraled = Mat()
+//        Imgproc.cvtColor(croped, croped, Imgproc.COLOR_BGRA2BGR)
+//        Imgproc.bilateralFilter(croped, bilateraled, 5, 175.0, 175.0)
+//
+//        val canny = Mat()
+//        Imgproc.Canny(bilateraled, canny, 75.0, 200.0)
+
+        setImageResult(croped)
         return tableMat
     }
 
@@ -167,12 +197,12 @@ class LoadImageActivity : AppCompatActivity() {
             }
 
             val recPoints = MatOfPoint(*pts)
-            Imgproc.drawContours(
-                tableMat, listOf(recPoints), 0, Scalar(
-                    255.0,
-                    0.0, 0.0
-                ), 15
-            )
+//            Imgproc.drawContours(
+//                tableMat, listOf(recPoints), 0, Scalar(
+//                    255.0,
+//                    0.0, 0.0
+//                ), 15
+//            )
             findBalls(tableMat, pts)
         }
     }
@@ -228,16 +258,16 @@ class LoadImageActivity : AppCompatActivity() {
 
         Log.e("TAAAAAAAK", "size: ${circles.cols()}")
         //draw circles
-        val size = if (circles.cols() > 16) { 16 } else { circles.cols() }// it sjhytd be 17
+        val size = if (circles.cols() > 15) { 15 } else { circles.cols() }// it sjhytd be 17
         for (x in 0 until size) { //16 because there is only 16 balls
             val c = circles.get(0, x)
             val center = Point(Math.round(c[0]).toDouble(), Math.round(c[1]).toDouble())
             val radius = Math.round(c[2]).toInt()
-            Imgproc.circle(gray, center, radius, Scalar(0.0, 255.0, 0.0),
+            Imgproc.circle(tableMat, center, radius, Scalar(0.0, 255.0, 0.0),
                 10, 8, 0)
         }
 
-        setImageResult(gray)
+        setImageResult(tableMat)
         return tableMat
     }
 
