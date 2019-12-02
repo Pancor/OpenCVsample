@@ -12,10 +12,14 @@ import org.opencv.core.*
 import org.opencv.imgproc.Imgproc
 import org.opencv.imgproc.Imgproc.drawContours
 import org.opencv.imgproc.Imgproc.minAreaRect
+import java.util.*
 
 class FindBallsActivity : AppCompatActivity(), CameraBridgeViewBase.CvCameraViewListener2 {
 
     private lateinit var managerCallback: BaseLoaderCallback
+
+    private var hColors : Deque<Double> = ArrayDeque(20)
+    private var storedTablePoints: Array<Point> = Array(4) { Point() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -71,8 +75,11 @@ class FindBallsActivity : AppCompatActivity(), CameraBridgeViewBase.CvCameraView
 
         val minMaxLocResult = Core.minMaxLoc(hist)
         val hColor = minMaxLocResult.maxLoc.y
+        hColors.add(hColor)
+        val averageHColor = getAverage()
+
         val thresh = Mat()
-        Core.inRange(blurred, Scalar(hColor - 10, 0.0, 0.0), Scalar(hColor + 10, 255.0, 255.0), thresh)
+        Core.inRange(blurred, Scalar(averageHColor - 10, 0.0, 0.0), Scalar(averageHColor + 10, 255.0, 255.0), thresh)
 
         //find circles
         val circles = Mat()
@@ -122,6 +129,10 @@ class FindBallsActivity : AppCompatActivity(), CameraBridgeViewBase.CvCameraView
 
         val minMaxLocResult = Core.minMaxLoc(hist)
         val hColor = minMaxLocResult.maxLoc.y
+        hColors.add(hColor)
+        val averageHColor = getAverage()
+        //Log.e("TAGGGGGGGGGGG", averageHColor.toString())
+
         val thresh = Mat()
         Core.inRange(blurred, Scalar(hColor - 10, 0.0, 0.0), Scalar(hColor + 10, 255.0, 255.0), thresh)
 
@@ -140,7 +151,7 @@ class FindBallsActivity : AppCompatActivity(), CameraBridgeViewBase.CvCameraView
         var maxIndex = 0
         for (i in cnts.indices) {
             val area = Imgproc.contourArea(cnts[i])
-            if (area > max){
+            if (area > max) {
                 max = area
                 maxIndex = i
             }
@@ -148,10 +159,14 @@ class FindBallsActivity : AppCompatActivity(), CameraBridgeViewBase.CvCameraView
 
         if (cnts.isNotEmpty()) {
             val points = cnts[maxIndex].toArray()
+            Log.e("COOOOOOOOO", points.size.toString())
+            //if (points.size == 4) {
+                storedTablePoints = points
+          //  }
 
-            val epsilon = 0.1 * Imgproc.arcLength(MatOfPoint2f(*points), true)
+            val epsilon = 0.1 * Imgproc.arcLength(MatOfPoint2f(*storedTablePoints), true)
             val rectPoints = MatOfPoint2f()
-            Imgproc.approxPolyDP(MatOfPoint2f(*points), rectPoints, epsilon, true)
+            Imgproc.approxPolyDP(MatOfPoint2f(*storedTablePoints), rectPoints, epsilon, true)
 
             val pts = rectPoints.toArray()
             pts.forEach { point ->
@@ -171,6 +186,18 @@ class FindBallsActivity : AppCompatActivity(), CameraBridgeViewBase.CvCameraView
             return tableMat
         }
         return inputFrame.rgba()
+    }
+
+    private fun getAverage(): Double {
+        return if (hColors.size > 0) {
+            var sum = 0.0
+            for (hColor in hColors) {
+                sum += hColor
+            }
+            sum / hColors.size
+        } else {
+            0.0
+        }
     }
 
     override fun onPause() {
