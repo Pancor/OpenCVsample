@@ -17,4 +17,9 @@ class TableManagerImpl : TableManager {
         val tableColor = tablePositionService.getTableColor(convertedTable)
         return tablePositionService.getTableContours(convertedTable, tableColor)
     }
+
+    override fun getTableColor(table: Mat): Double {
+        val convertedTable = tablePositionService.getPreparedImageForCalculations(table)
+        return tablePositionService.getTableColor(convertedTable)
+    }
 }

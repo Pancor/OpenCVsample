@@ -6,11 +6,13 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.os.Bundle
 import android.support.v7.app.AppCompatActivity
+import android.util.Log
 import com.bumptech.glide.Glide
 import kotlinx.android.synthetic.main.act_find_table.*
 import org.opencv.android.Utils
 import org.opencv.core.*
-import org.opencv.imgproc.Imgproc.*
+import org.opencv.core.CvType.CV_8UC1
+import org.opencv.imgproc.Imgproc
 import pl.pancordev.opencvsample.tools.TableManager
 import pl.pancordev.opencvsample.tools.TableManagerImpl
 
@@ -50,8 +52,29 @@ class FindTableActivity : AppCompatActivity() {
         val pts = tableManager.getTableCountersFromImage(tableMat)
 
         val recPoints = MatOfPoint(*pts)
-        drawContours(tableMat, listOf(recPoints), 0, Scalar(255.0, 0.0, 0.0), 15)
-        setImageResult(tableMat)
+
+        //remove noise background
+        val mask = Mat.zeros(tableMat.size(), CvType.CV_8UC1)
+        Imgproc.fillPoly(mask, listOf(recPoints), Scalar(255.0, 255.0, 255.0))
+        val croped = Mat(tableMat.size(), CV_8UC1)
+        tableMat.copyTo(croped, mask)
+
+        val hsvCroped = Mat()
+        Imgproc.cvtColor(croped, hsvCroped, Imgproc.COLOR_BGR2HSV)
+
+        val thresh = Mat()
+        val tableColor = tableManager.getTableColor(tableMat)
+        Core.inRange(hsvCroped, Scalar(tableColor - 10, 0.0, 0.0), Scalar(tableColor + 10, 255.0, 255.0), thresh)
+        val threshInv = Mat()
+        Core.bitwise_not(thresh, threshInv)
+
+        val balls = Mat(tableMat.size(), CV_8UC1)
+        croped.copyTo(balls, threshInv)
+
+        setComparinImage(balls)
+
+        //drawContours(tableMat, listOf(recPoints), 0, Scalar(255.0, 0.0, 0.0), 15)
+        setImageResult(croped)
     }
 
     private fun setImageResult(mat: Mat) {
@@ -135,11 +158,11 @@ class FindTableActivity : AppCompatActivity() {
 //        }
 //    }
 //
-//    private fun setComparinImage(mat: Mat) {
-//        val bmp = Bitmap.createBitmap(mat.cols(), mat.rows(), Bitmap.Config.ARGB_8888)
-//        Utils.matToBitmap(mat, bmp)
-//        Glide.with(this)
-//            .load(bmp)
-//            .into(imageView2)
-//    }
+    private fun setComparinImage(mat: Mat) {
+        val bmp = Bitmap.createBitmap(mat.cols(), mat.rows(), Bitmap.Config.ARGB_8888)
+        Utils.matToBitmap(mat, bmp)
+        Glide.with(this)
+            .load(bmp)
+            .into(imageView2)
+    }
 }

@@ -9,22 +9,24 @@ import org.opencv.android.CameraBridgeViewBase
 import org.opencv.android.LoaderCallbackInterface
 import org.opencv.android.OpenCVLoader
 import org.opencv.core.*
+import org.opencv.core.CvType.CV_8UC1
 import org.opencv.imgproc.Imgproc
 import org.opencv.imgproc.Imgproc.drawContours
 import org.opencv.imgproc.Imgproc.minAreaRect
+import pl.pancordev.opencvsample.tools.TableManager
+import pl.pancordev.opencvsample.tools.TableManagerImpl
 import java.util.*
 
 class FindBallsActivity : AppCompatActivity(), CameraBridgeViewBase.CvCameraViewListener2 {
 
     private lateinit var managerCallback: BaseLoaderCallback
 
-    private var hColors : Deque<Double> = ArrayDeque(20)
-    private var storedTablePoints: Array<Point> = Array(4) { Point() }
+    private lateinit var tableManager: TableManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.act_find_balls)
-
+        tableManager = TableManagerImpl()
         cameraView.setCvCameraViewListener(this)
         managerCallback = object : BaseLoaderCallback(this) {
             override fun onManagerConnected(status: Int) {
@@ -75,11 +77,9 @@ class FindBallsActivity : AppCompatActivity(), CameraBridgeViewBase.CvCameraView
 
         val minMaxLocResult = Core.minMaxLoc(hist)
         val hColor = minMaxLocResult.maxLoc.y
-        hColors.add(hColor)
-        val averageHColor = getAverage()
 
         val thresh = Mat()
-        Core.inRange(blurred, Scalar(averageHColor - 10, 0.0, 0.0), Scalar(averageHColor + 10, 255.0, 255.0), thresh)
+        Core.inRange(blurred, Scalar(hColor - 10, 0.0, 0.0), Scalar(hColor + 10, 255.0, 255.0), thresh)
 
         //find circles
         val circles = Mat()
@@ -102,102 +102,20 @@ class FindBallsActivity : AppCompatActivity(), CameraBridgeViewBase.CvCameraView
         return tableMat
     }
 
-    fun table(inputFrame: CameraBridgeViewBase.CvCameraViewFrame): Mat {
+    private fun table(inputFrame: CameraBridgeViewBase.CvCameraViewFrame): Mat {
         val tableMat = inputFrame.rgba()
+        val pts = tableManager.getTableCountersFromImage(tableMat)
+        val recPoints = MatOfPoint(*pts)
+        val scalar = Scalar(255.0, 0.0, 0.0)
 
-        val resized = Mat()
-        Imgproc.resize(tableMat, resized, Size(tableMat.size().width * 0.1, tableMat.size().height * 0.1))
-        val ratio = tableMat.size().width / resized.size().width
+        val mask = Mat.zeros(tableMat.size(), CvType.CV_8UC1)
+        Imgproc.fillPoly(mask, listOf(recPoints), Scalar(255.0, 255.0, 255.0))
 
-        val hsv = Mat()
-        Imgproc.cvtColor(resized, hsv, Imgproc.COLOR_BGR2HSV)
-        val blurred = Mat()
-        Imgproc.GaussianBlur(hsv, blurred, Size(5.0, 5.0), 0.0)
+        val croped = Mat(tableMat.size(), CV_8UC1)
+        tableMat.copyTo(croped, mask)
 
-        val circle = Rect(blurred.width() / 2, blurred.height() / 2, blurred.width() / 4,blurred.height() / 4)
-        val roi = Mat(blurred, circle)
-
-        val hist = Mat()
-        Imgproc.calcHist(
-            listOf(roi),
-            MatOfInt(0),
-            Mat(),
-            hist,
-            MatOfInt(180),
-            MatOfFloat(0f, 180f)
-        )
-
-        val minMaxLocResult = Core.minMaxLoc(hist)
-        val hColor = minMaxLocResult.maxLoc.y
-        hColors.add(hColor)
-        val averageHColor = getAverage()
-        //Log.e("TAGGGGGGGGGGG", averageHColor.toString())
-
-        val thresh = Mat()
-        Core.inRange(blurred, Scalar(hColor - 10, 0.0, 0.0), Scalar(hColor + 10, 255.0, 255.0), thresh)
-
-        val cnts: List<MatOfPoint> = mutableListOf()
-        val hierarchy = Mat()
-
-        Imgproc.findContours(
-            thresh,
-            cnts,
-            hierarchy,
-            Imgproc.RETR_EXTERNAL,
-            Imgproc.CHAIN_APPROX_SIMPLE
-        )
-
-        var max = 0.0
-        var maxIndex = 0
-        for (i in cnts.indices) {
-            val area = Imgproc.contourArea(cnts[i])
-            if (area > max) {
-                max = area
-                maxIndex = i
-            }
-        }
-
-        if (cnts.isNotEmpty()) {
-            val points = cnts[maxIndex].toArray()
-            Log.e("COOOOOOOOO", points.size.toString())
-            //if (points.size == 4) {
-                storedTablePoints = points
-          //  }
-
-            val epsilon = 0.1 * Imgproc.arcLength(MatOfPoint2f(*storedTablePoints), true)
-            val rectPoints = MatOfPoint2f()
-            Imgproc.approxPolyDP(MatOfPoint2f(*storedTablePoints), rectPoints, epsilon, true)
-
-            val pts = rectPoints.toArray()
-            pts.forEach { point ->
-                run {
-                    point.x *= ratio
-                    point.y *= ratio
-                }
-            }
-
-            val recPoints = MatOfPoint(*pts)
-            Imgproc.drawContours(
-                tableMat, listOf(recPoints), 0, Scalar(
-                    255.0,
-                    0.0, 0.0
-                ), 10
-            )
-            return tableMat
-        }
-        return inputFrame.rgba()
-    }
-
-    private fun getAverage(): Double {
-        return if (hColors.size > 0) {
-            var sum = 0.0
-            for (hColor in hColors) {
-                sum += hColor
-            }
-            sum / hColors.size
-        } else {
-            0.0
-        }
+        //Imgproc.drawContours(tableMat, listOf(recPoints), 0, scalar, 10)
+        return croped
     }
 
     override fun onPause() {

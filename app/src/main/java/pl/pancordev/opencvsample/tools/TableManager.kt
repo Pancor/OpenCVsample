@@ -7,4 +7,6 @@ import org.opencv.core.Point
 interface TableManager {
 
     fun getTableCountersFromImage(table: Mat): Array<Point>
+
+    fun getTableColor(table: Mat): Double
 }

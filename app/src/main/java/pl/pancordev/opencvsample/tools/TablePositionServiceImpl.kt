@@ -1,5 +1,6 @@
 package pl.pancordev.opencvsample.tools
 
+import android.util.Log
 import org.opencv.core.*
 import org.opencv.imgproc.Imgproc
 
@@ -37,7 +38,9 @@ class TablePositionServiceImpl : TablePositionService {
         Imgproc.calcHist(listOf(roi), MatOfInt(0), Mat(), hist, MatOfInt(180), MatOfFloat(0f, 180f))
 
         val minMaxLocResult = Core.minMaxLoc(hist)
-        return minMaxLocResult.maxLoc.y
+        val hColor = minMaxLocResult.maxLoc.y
+        Log.e("TAG", hColor.toString())
+        return hColor
     }
 
     override fun getTableContours(table: Mat, tableColor: Double): Array<Point> {
